@@ -1,0 +1,40 @@
+{
+  "name": "typing-testris",
+  "version": "1.0.0",
+  "description": "A retro-style speed typing game where sentences fall like Tetris blocks",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000",
+    "serve": "python3 -m http.server 8000",
+    "build": "npm run clean && npm run copy",
+    "clean": "rm -rf dist && mkdir dist",
+    "copy": "cp *.html *.css *.js dist/",
+    "deploy": "wrangler pages deploy dist",
+    "deploy:staging": "wrangler pages deploy dist --project-name=typing-testris-staging"
+  },
+  "keywords": [
+    "typing",
+    "game",
+    "tetris",
+    "retro",
+    "javascript",
+    "html5",
+    "speed-typing",
+    "leaderboard"
+  ],
+  "author": "Generated with Memex",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not ie <= 8"
+  ]
+}

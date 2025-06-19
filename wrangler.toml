@@ -1,0 +1,5 @@
+name = "typing-testris"
+compatibility_date = "2023-12-01"
+
+# Static site configuration for Cloudflare Pages
+pages_build_output_dir = "dist"

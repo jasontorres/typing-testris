@@ -2,6 +2,8 @@
 
 A retro-style speed typing game where sentences fall like Tetris blocks. Type the sentences before they hit the ground to survive!
 
+Play here: https://typing-testris.pages.dev
+
 ## Features
 
 - **Retro 80s Aesthetic**: Neon green colors, pixel-perfect mono fonts, and glowing effects

@@ -1,0 +1,15 @@
+name = "typing-testris-secure"
+main = "src/simple-secure.js"
+compatibility_date = "2023-12-01"
+
+# KV namespaces
+[[kv_namespaces]]
+binding = "LEADERBOARD_KV"
+id = "aa766996999b4e368d80eaaf2b2e0a72"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "14156b82408444bb8ebe0e3a4d857501"
+
+# Environment variables will be set as secrets
+# ADMIN_SECRET = "your-admin-secret-here"

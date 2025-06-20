@@ -1,33 +1,37 @@
-// Cloudflare Workers API for Global Leaderboard
+// SECURE Backend Worker - Contains real secrets and business logic
+// This should ONLY be called by the proxy worker, never directly by frontend
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
-
-    // Handle preflight OPTIONS requests
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { 
-        status: 200, 
-        headers: corsHeaders 
+    // Security check - only allow requests with valid internal auth
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized - missing auth' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    const token = authHeader.substring(7);
+    if (token !== env.INTERNAL_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Unauthorized - invalid token' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Get client IP from proxy
+    const clientIP = request.headers.get('X-Client-IP') || 'unknown';
 
     try {
       // GET /api/leaderboard - Get global leaderboard
       if (path === '/api/leaderboard' && request.method === 'GET') {
         const leaderboard = await env.LEADERBOARD_KV.get('global_leaderboard', 'json') || [];
         return new Response(JSON.stringify(leaderboard), {
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' }
         });
       }
 
@@ -39,22 +43,41 @@ export default {
         if (!scoreData.name || !scoreData.score || scoreData.score <= 0) {
           return new Response(JSON.stringify({ error: 'Invalid score data' }), {
             status: 400,
-            headers: { 
-              ...corsHeaders,
-              'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Enhanced validation for backend
+        if (scoreData.score > 1000000) {
+          return new Response(JSON.stringify({ error: 'Score too high - possible cheat detected' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Check for duplicate submissions from same IP
+        const duplicateKey = `recent_score:${clientIP}:${scoreData.score}`;
+        const recentSubmission = await env.LEADERBOARD_KV.get(duplicateKey);
+        if (recentSubmission) {
+          return new Response(JSON.stringify({ error: 'Duplicate score detected' }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' }
           });
         }
 
         // Sanitize and prepare score entry
         const scoreEntry = {
-          name: scoreData.name.slice(0, 20), // Limit name length
-          score: Math.floor(scoreData.score),
-          level: Math.floor(scoreData.level || 1),
-          sentences: Math.floor(scoreData.sentences || 0),
+          name: scoreData.name.slice(0, 20).replace(/[<>]/g, ''), // Remove HTML chars
+          score: Math.floor(Math.abs(scoreData.score)),
+          level: Math.floor(Math.abs(scoreData.level || 1)),
+          sentences: Math.floor(Math.abs(scoreData.sentences || 0)),
           date: new Date().toISOString(),
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          clientIP: clientIP.slice(0, 15) // Store partial IP for debugging
         };
+
+        // Mark this score as submitted to prevent duplicates
+        await env.LEADERBOARD_KV.put(duplicateKey, 'true', { expirationTtl: 300 }); // 5 minutes
 
         // Get current leaderboard
         let leaderboard = await env.LEADERBOARD_KV.get('global_leaderboard', 'json') || [];
@@ -76,10 +99,7 @@ export default {
           rank, 
           leaderboard: leaderboard.slice(0, 20) // Return top 20 for display
         }), {
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' }
         });
       }
 
@@ -105,19 +125,16 @@ export default {
       }
 
       // 404 for unknown routes
-      return new Response('Not Found', { 
+      return new Response(JSON.stringify({ error: 'Not Found' }), { 
         status: 404, 
-        headers: corsHeaders 
+        headers: { 'Content-Type': 'application/json' }
       });
 
     } catch (error) {
-      console.error('Worker error:', error);
+      console.error('Backend Worker error:', error);
       return new Response(JSON.stringify({ error: 'Internal server error' }), {
         status: 500,
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
   },

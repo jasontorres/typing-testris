@@ -1,0 +1,12 @@
+name = "typing-testris-proxy"
+main = "src/proxy.js"
+compatibility_date = "2023-12-01"
+
+# KV namespace for rate limiting (separate from main data)
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "14156b82408444bb8ebe0e3a4d857501"
+
+# Environment variables (these will be set as secrets)
+# BACKEND_API_URL = "https://typing-testris-backend.chilang.workers.dev"
+# INTERNAL_API_KEY = "secure-random-key-here"

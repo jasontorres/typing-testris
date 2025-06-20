@@ -1,16 +1,20 @@
-class GlobalLeaderboard {
+class SecureGlobalLeaderboard {
     constructor() {
-        // Use the secure API - NO SECRETS EXPOSED IN FRONTEND
         this.apiBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'https://typing-testris-secure.chilang.workers.dev' // Use secure API
-            : 'https://typing-testris-secure.chilang.workers.dev';
+            ? 'https://typing-testris.chilang.workers.dev' 
+            : 'https://typing-testris.chilang.workers.dev';
+        
+        // Generate a game session when the game starts
+        this.gameSession = this.createGameSession();
+        
+        // API key (in production, this would be environment-specific)
+        this.apiKey = 'your-api-key-here'; // This should be set via build process
         
         this.isOnline = navigator.onLine;
         this.cache = null;
         this.lastFetch = 0;
-        this.cacheTimeout = 30000; // 30 seconds
+        this.cacheTimeout = 30000;
 
-        // Listen for online/offline events
         window.addEventListener('online', () => {
             this.isOnline = true;
             this.syncPendingScores();
@@ -21,14 +25,23 @@ class GlobalLeaderboard {
         });
     }
 
-    // Get global leaderboard
+    createGameSession() {
+        const sessionData = {
+            startTime: Date.now(),
+            sessionId: Math.random().toString(36).slice(2),
+            version: '1.0'
+        };
+        
+        // Simple base64 encoding (not secure, but prevents casual tampering)
+        return btoa(JSON.stringify(sessionData));
+    }
+
     async getLeaderboard() {
         if (!this.isOnline) {
             return this.getOfflineLeaderboard();
         }
 
         try {
-            // Use cache if recent
             const now = Date.now();
             if (this.cache && (now - this.lastFetch) < this.cacheTimeout) {
                 return this.cache;
@@ -46,12 +59,8 @@ class GlobalLeaderboard {
             }
 
             const leaderboard = await response.json();
-            
-            // Cache the result
             this.cache = leaderboard;
             this.lastFetch = now;
-            
-            // Store offline backup
             this.storeOfflineLeaderboard(leaderboard);
             
             return leaderboard;
@@ -61,7 +70,6 @@ class GlobalLeaderboard {
         }
     }
 
-    // Submit score to global leaderboard
     async submitScore(scoreData) {
         if (!this.isOnline) {
             this.storePendingScore(scoreData);
@@ -69,21 +77,34 @@ class GlobalLeaderboard {
         }
 
         try {
+            // Validate score client-side first
+            if (!this.validateScore(scoreData)) {
+                throw new Error('Invalid score data');
+            }
+
             const response = await fetch(`${this.apiBase}/api/leaderboard`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-API-Key': this.apiKey,
+                    'X-Game-Session': this.gameSession,
                 },
                 body: JSON.stringify(scoreData)
             });
 
             if (!response.ok) {
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait before submitting again.');
+                } else if (response.status === 401) {
+                    throw new Error('Authentication failed. Please refresh the page.');
+                } else if (response.status === 403) {
+                    throw new Error('Invalid game session. Please refresh the page.');
+                }
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const result = await response.json();
             
-            // Update cache with new leaderboard
             if (result.leaderboard) {
                 this.cache = result.leaderboard;
                 this.lastFetch = Date.now();
@@ -98,30 +119,25 @@ class GlobalLeaderboard {
         }
     }
 
-    // Get leaderboard statistics
-    async getStats() {
-        if (!this.isOnline) {
-            return this.getOfflineStats();
+    validateScore(scoreData) {
+        // Client-side validation to prevent obviously invalid submissions
+        if (!scoreData.name || scoreData.name.length > 20) return false;
+        if (!scoreData.score || scoreData.score <= 0 || scoreData.score > 1000000) return false;
+        if (scoreData.level && (scoreData.level < 1 || scoreData.level > 100)) return false;
+        
+        // Check if score is reasonable for game time
+        const gameTime = Date.now() - JSON.parse(atob(this.gameSession)).startTime;
+        const maxReasonableScore = (gameTime / 60000) * 500; // 500 points per minute max
+        
+        if (scoreData.score > maxReasonableScore * 3) {
+            console.warn('Score appears too high for game duration');
+            return false;
         }
-
-        try {
-            const response = await fetch(`${this.apiBase}/api/leaderboard/stats`);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const stats = await response.json();
-            localStorage.setItem('global-leaderboard-stats', JSON.stringify(stats));
-            
-            return stats;
-        } catch (error) {
-            console.warn('Failed to fetch leaderboard stats:', error);
-            return this.getOfflineStats();
-        }
+        
+        return true;
     }
 
-    // Offline support methods
+    // Existing offline support methods...
     getOfflineLeaderboard() {
         try {
             const stored = localStorage.getItem('global-leaderboard-cache');
@@ -139,31 +155,13 @@ class GlobalLeaderboard {
         }
     }
 
-    getOfflineStats() {
-        try {
-            const stored = localStorage.getItem('global-leaderboard-stats');
-            return stored ? JSON.parse(stored) : {
-                totalPlayers: 0,
-                highestScore: 0,
-                averageScore: 0,
-                lastUpdated: null
-            };
-        } catch (e) {
-            return {
-                totalPlayers: 0,
-                highestScore: 0,
-                averageScore: 0,
-                lastUpdated: null
-            };
-        }
-    }
-
     storePendingScore(scoreData) {
         try {
             const pending = this.getPendingScores();
             pending.push({
                 ...scoreData,
-                pendingTimestamp: Date.now()
+                pendingTimestamp: Date.now(),
+                gameSession: this.gameSession
             });
             localStorage.setItem('pending-global-scores', JSON.stringify(pending));
         } catch (e) {
@@ -186,27 +184,46 @@ class GlobalLeaderboard {
 
         console.log(`Syncing ${pending.length} pending scores...`);
         
+        const synced = [];
         for (const scoreData of pending) {
-            const { pendingTimestamp, ...cleanScoreData } = scoreData;
             try {
-                await this.submitScore(cleanScoreData);
+                const { pendingTimestamp, gameSession, ...cleanScoreData } = scoreData;
+                
+                // Use the original game session for pending scores
+                const originalGameSession = this.gameSession;
+                this.gameSession = gameSession;
+                
+                const result = await this.submitScore(cleanScoreData);
+                
+                // Restore current game session
+                this.gameSession = originalGameSession;
+                
+                if (!result.offline) {
+                    synced.push(scoreData);
+                }
             } catch (error) {
                 console.warn('Failed to sync pending score:', error);
-                // Keep the score for next sync attempt
-                return;
+                break; // Stop on first failure to avoid overwhelming the API
             }
         }
 
-        // Clear pending scores after successful sync
-        localStorage.removeItem('pending-global-scores');
-        console.log('All pending scores synced successfully');
+        // Remove successfully synced scores
+        if (synced.length > 0) {
+            const remaining = pending.filter(score => !synced.includes(score));
+            localStorage.setItem('pending-global-scores', JSON.stringify(remaining));
+            console.log(`Synced ${synced.length} scores successfully`);
+        }
     }
 
-    // Check if we have pending scores
     hasPendingScores() {
         return this.getPendingScores().length > 0;
+    }
+
+    // Reset game session (call when starting a new game)
+    resetGameSession() {
+        this.gameSession = this.createGameSession();
     }
 }
 
 // Create global instance
-window.globalLeaderboard = new GlobalLeaderboard();
+window.secureGlobalLeaderboard = new SecureGlobalLeaderboard();

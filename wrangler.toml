@@ -1,4 +1,4 @@
-name = "typing-testris"
+name = "typing-testris-backend"
 main = "src/index.js"
 compatibility_date = "2023-12-01"
 

@@ -1,0 +1,16 @@
+name = "typing-testris-secure"
+main = "src/secure-index.js"
+compatibility_date = "2023-12-01"
+
+# KV namespace for global leaderboard
+[[kv_namespaces]]
+binding = "LEADERBOARD_KV"
+id = "aa766996999b4e368d80eaaf2b2e0a72"
+
+# Environment variables for security
+[vars]
+NODE_ENV = "production"
+
+# Secrets (set these using: wrangler secret put SECRET_NAME)
+# API_SECRET = "your-secure-api-key-here"
+# ADMIN_SECRET = "your-admin-secret-here"

@@ -1,9 +1,9 @@
 class GlobalLeaderboard {
     constructor() {
-        // Use the current domain's API or fallback to localhost for development
+        // Use the deployed Workers API
         this.apiBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:8787' // Wrangler dev server default port
-            : `${window.location.protocol}//${window.location.host}`;
+            ? 'https://typing-testris.chilang.workers.dev' // Use production API even in development
+            : 'https://typing-testris.chilang.workers.dev';
         
         this.isOnline = navigator.onLine;
         this.cache = null;

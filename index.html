@@ -96,6 +96,10 @@
                 <div class="leaderboard-section">
                     <div class="leaderboard-header">
                         <h3 class="section-title">LEADERBOARD</h3>
+                        <div class="leaderboard-type-selector">
+                            <button id="localLeaderboardBtn" class="active" onclick="switchToLocal()">LOCAL</button>
+                            <button id="globalLeaderboardBtn" onclick="switchToGlobal()">GLOBAL</button>
+                        </div>
                         <div class="leaderboard-controls">
                             <button onclick="toggleLeaderboard()">Show/Hide</button>
                             <button onclick="game.clearLeaderboard()">Clear</button>
@@ -120,6 +124,7 @@
     </div>
     
     <script src="config.js"></script>
+    <script src="global-leaderboard.js"></script>
     <script src="game.js"></script>
 </body>
 </html>

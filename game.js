@@ -40,6 +40,9 @@ class FallingTypingGame {
         
         // Leaderboard system
         this.leaderboard = this.loadLeaderboard();
+        this.globalLeaderboard = [];
+        this.leaderboardType = 'local'; // 'local' or 'global'
+        this.loadingGlobalLeaderboard = false;
         
         this.initializeGame();
         this.setupEventListeners();
@@ -463,39 +466,109 @@ class FallingTypingGame {
             timestamp: Date.now()
         };
         
+        // Save to local leaderboard
         const oldLength = this.leaderboard.length;
         this.leaderboard.push(scoreEntry);
         this.leaderboard.sort((a, b) => b.score - a.score);
         
-        // Check if this is a new high score
-        const rank = this.leaderboard.findIndex(entry => entry.timestamp === scoreEntry.timestamp) + 1;
-        if (rank <= 10) {
-            this.showHighScoreMessage(rank);
+        // Check if this is a new high score locally
+        const localRank = this.leaderboard.findIndex(entry => entry.timestamp === scoreEntry.timestamp) + 1;
+        if (localRank <= 10) {
+            this.showHighScoreMessage(localRank, 'local');
         }
         
         this.leaderboard = this.leaderboard.slice(0, 10); // Keep top 10
-        
         this.saveLeaderboard();
+        
+        // Submit to global leaderboard
+        this.submitToGlobalLeaderboard(scoreEntry);
+        
+        this.displayLeaderboard();
+    }
+
+    async submitToGlobalLeaderboard(scoreEntry) {
+        if (!window.globalLeaderboard) return;
+        
+        try {
+            const result = await window.globalLeaderboard.submitScore(scoreEntry);
+            
+            if (result.offline) {
+                this.showOfflineMessage();
+            } else if (result.rank && result.rank <= 20) {
+                this.showHighScoreMessage(result.rank, 'global');
+            }
+            
+            // If we submitted successfully, refresh global leaderboard if it's currently displayed
+            if (this.leaderboardType === 'global') {
+                await this.loadGlobalLeaderboard();
+            }
+        } catch (error) {
+            console.warn('Failed to submit to global leaderboard:', error);
+        }
+    }
+
+    async loadGlobalLeaderboard() {
+        if (!window.globalLeaderboard) return;
+        
+        this.loadingGlobalLeaderboard = true;
+        this.displayLeaderboard(); // Show loading state
+        
+        try {
+            this.globalLeaderboard = await window.globalLeaderboard.getLeaderboard();
+        } catch (error) {
+            console.warn('Failed to load global leaderboard:', error);
+            this.globalLeaderboard = [];
+        } finally {
+            this.loadingGlobalLeaderboard = false;
+            if (this.leaderboardType === 'global') {
+                this.displayLeaderboard();
+            }
+        }
+    }
+
+    async toggleLeaderboardType() {
+        if (this.leaderboardType === 'local') {
+            this.leaderboardType = 'global';
+            await this.loadGlobalLeaderboard();
+        } else {
+            this.leaderboardType = 'local';
+        }
         this.displayLeaderboard();
     }
     
-    showHighScoreMessage(rank) {
+    showHighScoreMessage(rank, type = 'local') {
         const gameOverContent = document.querySelector('.game-over-content');
         const highScoreMsg = document.createElement('p');
-        highScoreMsg.className = 'high-score-message';
-        highScoreMsg.style.color = '#FFD700';
+        highScoreMsg.className = `high-score-message ${type}`;
+        highScoreMsg.style.color = type === 'global' ? '#00FF88' : '#FFD700';
         highScoreMsg.style.fontWeight = 'bold';
-        highScoreMsg.style.textShadow = '0 0 15px #FFD700';
+        highScoreMsg.style.textShadow = type === 'global' ? '0 0 15px #00FF88' : '0 0 15px #FFD700';
+        
+        const typeLabel = type === 'global' ? 'GLOBAL' : 'LOCAL';
         
         if (rank === 1) {
-            highScoreMsg.textContent = '🏆 NEW HIGH SCORE! 🏆';
+            highScoreMsg.textContent = `🏆 NEW ${typeLabel} HIGH SCORE! 🏆`;
         } else if (rank <= 3) {
-            highScoreMsg.textContent = `🥇 Top ${rank} Score! 🥇`;
+            highScoreMsg.textContent = `🥇 ${typeLabel} Top ${rank} Score! 🥇`;
+        } else if (rank <= 10) {
+            highScoreMsg.textContent = `⭐ ${typeLabel} Top 10! Rank #${rank} ⭐`;
         } else {
-            highScoreMsg.textContent = `⭐ Top 10 Score! Rank #${rank} ⭐`;
+            highScoreMsg.textContent = `🎯 ${typeLabel} Top 20! Rank #${rank} 🎯`;
         }
         
         gameOverContent.insertBefore(highScoreMsg, gameOverContent.querySelector('button'));
+    }
+
+    showOfflineMessage() {
+        const gameOverContent = document.querySelector('.game-over-content');
+        const offlineMsg = document.createElement('p');
+        offlineMsg.className = 'offline-message';
+        offlineMsg.style.color = '#FFA500';
+        offlineMsg.style.fontWeight = 'bold';
+        offlineMsg.style.textShadow = '0 0 15px #FFA500';
+        offlineMsg.textContent = '📱 Score saved offline - will sync when online';
+        
+        gameOverContent.insertBefore(offlineMsg, gameOverContent.querySelector('button'));
     }
     
     getPlayerName() {
@@ -513,12 +586,25 @@ class FallingTypingGame {
         
         leaderboardDiv.innerHTML = '';
         
-        if (this.leaderboard.length === 0) {
-            leaderboardDiv.innerHTML = '<div class="no-scores">No scores yet!</div>';
+        // Show loading state for global leaderboard
+        if (this.leaderboardType === 'global' && this.loadingGlobalLeaderboard) {
+            leaderboardDiv.innerHTML = '<div class="loading-scores">Loading global scores...</div>';
             return;
         }
         
-        this.leaderboard.forEach((entry, index) => {
+        const currentLeaderboard = this.leaderboardType === 'global' 
+            ? this.globalLeaderboard 
+            : this.leaderboard;
+        
+        if (currentLeaderboard.length === 0) {
+            const message = this.leaderboardType === 'global' 
+                ? 'No global scores yet!' 
+                : 'No local scores yet!';
+            leaderboardDiv.innerHTML = `<div class="no-scores">${message}</div>`;
+            return;
+        }
+        
+        currentLeaderboard.forEach((entry, index) => {
             const entryDiv = document.createElement('div');
             entryDiv.className = 'leaderboard-entry';
             
@@ -539,7 +625,12 @@ class FallingTypingGame {
     }
     
     clearLeaderboard() {
-        if (confirm('Are you sure you want to clear the leaderboard?')) {
+        if (this.leaderboardType === 'global') {
+            alert('Cannot clear global leaderboard - this affects all players!');
+            return;
+        }
+        
+        if (confirm('Are you sure you want to clear the local leaderboard?')) {
             this.leaderboard = [];
             this.saveLeaderboard();
             this.displayLeaderboard();
@@ -551,7 +642,7 @@ class FallingTypingGame {
 let game;
 
 // Initialize game when page loads
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
     game = new FallingTypingGame();
     
     // Focus on input
@@ -559,6 +650,15 @@ window.addEventListener('load', () => {
     
     // Display initial leaderboard
     game.displayLeaderboard();
+    
+    // Load global leaderboard in the background
+    if (window.globalLeaderboard) {
+        // Sync any pending scores
+        await window.globalLeaderboard.syncPendingScores();
+        
+        // Load global leaderboard data for faster switching
+        await game.loadGlobalLeaderboard();
+    }
 });
 
 // Restart function for the restart button
@@ -578,6 +678,38 @@ function toggleLeaderboard() {
         }
     } else {
         leaderboard.style.display = 'none';
+    }
+}
+
+// Switch to local leaderboard
+function switchToLocal() {
+    if (game && game.leaderboardType !== 'local') {
+        game.leaderboardType = 'local';
+        game.displayLeaderboard();
+        updateLeaderboardButtons('local');
+    }
+}
+
+// Switch to global leaderboard
+async function switchToGlobal() {
+    if (game && game.leaderboardType !== 'global') {
+        game.leaderboardType = 'global';
+        await game.loadGlobalLeaderboard();
+        updateLeaderboardButtons('global');
+    }
+}
+
+// Update leaderboard button states
+function updateLeaderboardButtons(type) {
+    const localBtn = document.getElementById('localLeaderboardBtn');
+    const globalBtn = document.getElementById('globalLeaderboardBtn');
+    
+    if (type === 'local') {
+        localBtn.classList.add('active');
+        globalBtn.classList.remove('active');
+    } else {
+        globalBtn.classList.add('active');
+        localBtn.classList.remove('active');
     }
 }
 

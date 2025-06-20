@@ -3,3 +3,8 @@ compatibility_date = "2023-12-01"
 
 # Static site configuration for Cloudflare Pages
 pages_build_output_dir = "dist"
+
+# KV namespace for global leaderboard
+[[kv_namespaces]]
+binding = "LEADERBOARD_KV"
+id = "leaderboard_namespace"

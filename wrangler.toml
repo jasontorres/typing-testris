@@ -1,5 +1,8 @@
-name = "typing-testris"
+name = "typing-testris-backend"
+main = "src/index.js"
 compatibility_date = "2023-12-01"
 
-# Static site configuration for Cloudflare Pages
-pages_build_output_dir = "dist"
+# KV namespace for global leaderboard
+[[kv_namespaces]]
+binding = "LEADERBOARD_KV"
+id = "aa766996999b4e368d80eaaf2b2e0a72"

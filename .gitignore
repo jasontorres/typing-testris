@@ -17,6 +17,12 @@ build/
 # Cloudflare
 .wrangler/
 wrangler.toml.bak
+*.secret
+*.key
+
+# Security files
+secrets/
+.secrets
 
 # Editor files
 .vscode/
